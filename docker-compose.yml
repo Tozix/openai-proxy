@@ -1,0 +1,11 @@
+# Nginx — на хост-машине. Прокси слушает на порту 7388.
+# network_mode: host — исходящие запросы к OpenAI идут с хоста (видны IP и сеть хоста).
+services:
+  openai-proxy:
+    build: .
+    network_mode: host
+    env_file:
+      - .env
+    environment:
+      - PORT=7388
+    restart: unless-stopped
