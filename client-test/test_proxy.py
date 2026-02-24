@@ -22,7 +22,7 @@ except ImportError:
     print("Install: pip install -r requirements.txt")
     sys.exit(1)
 
-PROXY_BASE_URL = os.environ.get("PROXY_BASE_URL", "http://localhost:3000/v1")
+PROXY_BASE_URL = os.environ.get("PROXY_BASE_URL", "http://localhosts:3000/v1")
 PROXY_AUTH_PREFIX = os.environ.get("PROXY_AUTH_PREFIX", "myproxy")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 

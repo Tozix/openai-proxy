@@ -196,6 +196,25 @@ docker compose up -d --build
 
 Прокси будет доступен на `http://localhost:7388/v1` (или за nginx на вашем домене).
 
+### Nginx (виртуальный хост)
+
+Пример конфига для nginx на хост-машине: **[nginx/openai-proxy.conf.example](nginx/openai-proxy.conf.example)**.
+
+Кратко:
+- Проксируем `/v1/` на `http://127.0.0.1:7388` (порт приложения при `network_mode: host`).
+- `proxy_buffering off` и увеличенные таймауты — для стриминга (SSE) и долгих ответов.
+- В конфиге есть заготовка для HTTPS (раскомментировать и указать пути к сертификатам).
+
+Установка (Debian/Ubuntu):
+```bash
+sudo cp nginx/openai-proxy.conf.example /etc/nginx/sites-available/openai-proxy
+# Отредактируйте server_name и при необходимости пути к SSL
+sudo ln -s /etc/nginx/sites-available/openai-proxy /etc/nginx/sites-enabled/
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+Клиенты тогда обращаются к `https://api-proxy.example.com/v1` (или ваш `server_name`).
+
 ### Переменные окружения
 
 | Переменная | Описание | По умолчанию |
