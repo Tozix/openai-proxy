@@ -92,7 +92,7 @@ export class ProxyService {
       data: body,
       validateStatus: () => true,
       maxRedirects: 0,
-      timeout: 120000,
+      timeout: 600000, // 10 минут для длинных streaming запросов
     };
 
     const isStreamRequest =
