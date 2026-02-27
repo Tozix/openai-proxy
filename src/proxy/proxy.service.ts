@@ -3,14 +3,27 @@ import { ConfigService } from "@nestjs/config";
 import axios, { AxiosRequestConfig } from "axios";
 import { Request, Response } from "express";
 
+export interface UpstreamOptions {
+  baseUrl: string;
+  stripPrefix: string;
+}
+
 @Injectable()
 export class ProxyService {
   private readonly openaiBaseUrl: string;
+  private readonly grsaiBaseUrl: string;
+  private readonly kieBaseUrl: string;
   private readonly proxyAuthPrefix: string;
 
   constructor(private readonly config: ConfigService) {
     this.openaiBaseUrl = this.config
       .get<string>("OPENAI_BASE_URL", "https://api.openai.com")
+      .replace(/\/$/, "");
+    this.grsaiBaseUrl = this.config
+      .get<string>("GRSAI_BASE_URL", "https://grsaiapi.com")
+      .replace(/\/$/, "");
+    this.kieBaseUrl = this.config
+      .get<string>("KIE_BASE_URL", "https://api.kie.ai")
       .replace(/\/$/, "");
     this.proxyAuthPrefix = this.config.get<string>(
       "PROXY_AUTH_PREFIX",
@@ -57,7 +70,7 @@ export class ProxyService {
     return forward;
   }
 
-  async proxy(req: Request, res: Response): Promise<void> {
+  async proxy(req: Request, res: Response, upstream?: UpstreamOptions): Promise<void> {
     const openAiToken = this.extractOpenAiToken(req.headers.authorization);
     if (!openAiToken) {
       res
@@ -71,8 +84,17 @@ export class ProxyService {
       return;
     }
 
-    const path = req.originalUrl || req.url;
-    const url = `${this.openaiBaseUrl}${path}`;
+    let baseUrl = this.openaiBaseUrl;
+    let path = req.originalUrl || req.url;
+
+    if (upstream) {
+      baseUrl = upstream.baseUrl.replace(/\/$/, "");
+      if (path.startsWith(upstream.stripPrefix)) {
+        path = path.slice(upstream.stripPrefix.length) || "/";
+      }
+    }
+
+    const url = `${baseUrl}${path}`;
     const method = (req.method || "GET").toUpperCase();
     const headers = this.copyForwardHeaders(req, openAiToken);
 
@@ -132,5 +154,19 @@ export class ProxyService {
         : "Proxy error";
       res.status(status).json({ error: { message, code: "proxy_error" } });
     }
+  }
+
+  async proxyToGrsai(req: Request, res: Response): Promise<void> {
+    return this.proxy(req, res, {
+      baseUrl: this.grsaiBaseUrl,
+      stripPrefix: "/grsai",
+    });
+  }
+
+  async proxyToKie(req: Request, res: Response): Promise<void> {
+    return this.proxy(req, res, {
+      baseUrl: this.kieBaseUrl,
+      stripPrefix: "/kie",
+    });
   }
 }

@@ -6,7 +6,6 @@ dist
 .env.*
 !.env.example
 *.md
-client-test
 .cache
 *.log
 .nyc_output

@@ -1,13 +1,21 @@
 # OpenAI API Proxy
 
-Прокси-сервис для OpenAI API. Принимает запросы в формате OpenAI и прозрачно пересылает их на `api.openai.com`, возвращая ответ без изменений. Подходит для любого клиента (Python `openai`, Node.js SDK и т.д.) — достаточно указать адрес этого сервера как `base_url`.
+Прокси-сервис для OpenAI-совместимых API. Принимает запросы в формате OpenAI и прозрачно пересылает их на upstream-серверы, возвращая ответ без изменений. Подходит для любого клиента (Python `openai`, Node.js SDK и т.д.) — достаточно указать адрес этого сервера как `base_url`.
 
 ## Зачем это нужно
 
 **Доступ к OpenAI из регионов, где он недоступен.**  
-Если в вашей стране OpenAI заблокирован или работает нестабильно, можно поднять этот прокси на сервере в стране с доступом (VPS, облако). Все запросы к API будут идти через ваш прокси: клиент обращается к вашему домену, прокси — к OpenAI. Никаких VPN и системных прокси на машине разработчика не требуется — достаточно в коде указать URL прокси и свой ключ OpenAI в специальном формате.
+Если в вашей стране OpenAI заблокирован или работает нестабильно, можно поднять этот прокси на сервере в стране с доступом (VPS, облако). Все запросы к API будут идти через ваш прокси: клиент обращается к вашему домену, прокси — к upstream. Никаких VPN и системных прокси на машине разработчика не требуется — достаточно в коде указать URL прокси и свой ключ в специальном формате.
 
 Дополнительно прокси даёт защиту по префиксу токена: без знания вашего префикса к сервису не подключиться, даже зная адрес.
+
+### Поддерживаемые upstream
+
+| Путь на прокси | Upstream |
+|----------------|----------|
+| `/v1/*` | api.openai.com |
+| `/grsai/v1/*` | grsaiapi.com |
+| `/kie/gemini-3-pro/v1/*` | api.kie.ai |
 
 ## Как пользоваться (клиент)
 
@@ -154,6 +162,70 @@ curl -s "https://your-proxy.example.com/v1/models" \
   -H "Authorization: Bearer myproxy:sk-your-openai-key" | jq '.data[0].id'
 ```
 
+### grsai (grsaiapi.com)
+
+**Python:**
+```python
+from openai import OpenAI
+
+client = OpenAI(
+    base_url="https://proxy.agent-lia.ru/grsai/v1",
+    api_key="myFeedproxy3128:sk-your-grsai-key",
+)
+r = client.chat.completions.create(
+    model="gemini-3.1-pro",
+    messages=[{"role": "user", "content": "Привет!"}],
+)
+print(r.choices[0].message.content)
+```
+
+**Node.js:**
+```javascript
+import OpenAI from 'openai';
+
+const client = new OpenAI({
+  baseURL: 'https://proxy.agent-lia.ru/grsai/v1',
+  apiKey: 'myFeedproxy3128:sk-your-grsai-key',
+});
+const completion = await client.chat.completions.create({
+  model: 'gemini-3.1-pro',
+  messages: [{ role: 'user', content: 'Hi' }],
+});
+```
+
+**cURL:**
+```bash
+curl -X POST https://proxy.agent-lia.ru/grsai/v1/chat/completions \
+  -H "Authorization: Bearer myFeedproxy3128:sk-your-grsai-key" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"gemini-3.1-pro","stream":false,"messages":[{"role":"user","content":"Hi"}]}'
+```
+
+### KIE (api.kie.ai, Gemini 3 Pro)
+
+**Python** — KIE использует `content` как массив для мультимодальности:
+```python
+from openai import OpenAI
+
+client = OpenAI(
+    base_url="https://proxy.agent-lia.ru/kie/gemini-3-pro/v1",
+    api_key="myFeedproxy3128:your-kie-api-key",
+)
+r = client.chat.completions.create(
+    model="gemini-3-pro",
+    messages=[{"role": "user", "content": [{"type": "text", "text": "Привет!"}]}],
+)
+print(r.choices[0].message.content)
+```
+
+**cURL:**
+```bash
+curl -X POST https://proxy.agent-lia.ru/kie/gemini-3-pro/v1/chat/completions \
+  -H "Authorization: Bearer myFeedproxy3128:your-kie-key" \
+  -H "Content-Type: application/json" \
+  -d '{"stream":false,"messages":[{"role":"user","content":[{"type":"text","text":"Hi"}]}]}'
+```
+
 ### LangChain (Python)
 
 LangChain умеет передавать `openai_api_base` и `openai_api_key`:
@@ -182,7 +254,7 @@ npm install
 npm run start
 ```
 
-Сервер слушает порт 3000. Все запросы к `/v1` и `/v1/*` проксируются на `https://api.openai.com/v1/*`.
+Сервер слушает порт 3000. Запросы проксируются: `/v1/*` → OpenAI, `/grsai/*` → grsai, `/kie/*` → KIE.
 
 ### Docker
 
@@ -201,8 +273,8 @@ docker compose up -d --build
 Пример конфига для nginx на хост-машине: **[nginx/openai-proxy.conf.example](nginx/openai-proxy.conf.example)**.
 
 Кратко:
-- Проксируем `/v1/` на `http://127.0.0.1:7388` (порт приложения при `network_mode: host`).
-- `proxy_buffering off` и увеличенные таймауты — для стриминга (SSE) и долгих ответов.
+- Проксируем `/v1/`, `/grsai/`, `/kie/` на `http://127.0.0.1:7388` (порт приложения при `network_mode: host`).
+- `proxy_buffering off` и увеличенные таймауты — для стриминга (SSE) и долгих ответов (grsai/KIE: 600s).
 - В конфиге есть заготовка для HTTPS (раскомментировать и указать пути к сертификатам).
 
 Установка (Debian/Ubuntu):
@@ -221,21 +293,27 @@ sudo nginx -t && sudo systemctl reload nginx
 |------------|----------|--------------|
 | `PORT` | Порт сервера | 3000 |
 | `OPENAI_BASE_URL` | Базовый URL OpenAI | https://api.openai.com |
+| `GRSAI_BASE_URL` | Базовый URL grsai | https://grsaiapi.com |
+| `KIE_BASE_URL` | Базовый URL KIE | https://api.kie.ai |
 | `PROXY_AUTH_PREFIX` | Префикс в токене; если задан, клиент обязан передавать `префикс:ключ` | (пусто — любой токен с `:` обрабатывается) |
 
-Клиент передаёт: `Authorization: Bearer <ПРЕФИКС>:<OPENAI_API_KEY>`. Прокси проверяет префикс (если он задан) и в OpenAI отправляет только ключ.
+Клиент передаёт: `Authorization: Bearer <ПРЕФИКС>:<API_KEY>`. Прокси проверяет префикс (если он задан) и в upstream отправляет только ключ.
 
-## Тест (Python)
+## Тесты
 
-В папке `client-test/` — скрипт для проверки прокси.
+Ручные тесты прокси (Node.js/TypeScript): OpenAI, grsai, KIE.
 
 ```bash
-cd client-test
-pip install -r requirements.txt
-export PROXY_BASE_URL=http://localhost:3000/v1
-export PROXY_AUTH_PREFIX=myproxy
-export OPENAI_API_KEY=sk-your-openai-key
-python test_proxy.py
+# Добавьте в .env ключи:
+# OPENAI_API_KEY=sk-...
+# GRSAI_API_KEY=sk-...
+# KIE_API_KEY=...
+# PROXY_AUTH_PREFIX=myFeedproxy3128
+
+npm install
+npm run test
 ```
 
-Перед запуском убедитесь, что прокси запущен и в `.env` на сервере задан тот же `PROXY_AUTH_PREFIX`.
+Или: `npx tsx scripts/test-proxy.ts`
+
+Перед запуском убедитесь, что прокси развёрнут. Тесты выполняются только для тех upstream, чьи ключи заданы.
